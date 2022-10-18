@@ -1,6 +1,7 @@
 import requests
 # python3 -> pip3 install scipy
 from scipy.stats import rankdata
+import statistics
 
 ### League Metadata
 LEAGUE_ID = 859145890110218240
@@ -66,13 +67,12 @@ def main():
     populate_per_roster_data()
 
     # Gather individual calculations
-    points_per_game_rankings = calculate_points_per_game_rankings()
+    points_per_game_rankings, consistency_rankings = calculate_points_per_game_and_consistency_rankings()
     wins_rankings, overall_wins_rankings, recent_wins_rankings = calculate_wins_and_overall_wins_and_recent_wins_rankings()
     ros_rankings = get_ros_rankings()
-    # TODO consistency rankings
 
     # Calculate and sort power rankings
-    power_rankings = calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, ros_rankings)      
+    power_rankings = calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, consistency_rankings, ros_rankings)      
     sorted_power_rankings = dict(sorted(power_rankings.items(), key=lambda item: item[1]))
     sorted_power_rankings_to_team_name = convert_roster_keyed_dict_to_username_mapping(sorted_power_rankings)
 
@@ -146,9 +146,9 @@ def calculate_wins_and_overall_wins_and_recent_wins_rankings():
     sorted_overall_wins = dict(sorted(overall_wins.items(), key=lambda item: item[1]))
     sorted_recent_wins = dict(sorted(recent_wins.items(), key=lambda item: item[1]))
 
-    ranked_wins = rank_data_keyed_by_roster_id(sorted_wins)
-    ranked_overall_wins = rank_data_keyed_by_roster_id(sorted_overall_wins)
-    ranked_recent_wins = rank_data_keyed_by_roster_id(sorted_recent_wins)
+    ranked_wins = rank_data_keyed_by_roster_id(sorted_wins, 0)
+    ranked_overall_wins = rank_data_keyed_by_roster_id(sorted_overall_wins, 0)
+    ranked_recent_wins = rank_data_keyed_by_roster_id(sorted_recent_wins, 0)
 
     # Print stuff
     print("WINS and RANKED WINS")
@@ -169,25 +169,42 @@ def calculate_wins_and_overall_wins_and_recent_wins_rankings():
     return ranked_wins, ranked_overall_wins, ranked_recent_wins
 
 # Iterate through all teams and weeks to add up and calculate team based PPG
-def calculate_points_per_game_rankings():
+#
+# Calculate consistency rankings using the coefficient of variation:
+# Team StdDev / Team Average
+def calculate_points_per_game_and_consistency_rankings():
     points_per_roster = {}
     for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
-        points_per_roster[roster_id] = 0
+        points_per_roster[roster_id] = []
     
     for i in range(0, LATEST_FINISHED_WEEK):
         for roster_id, roster_data in PER_TEAM_WEEKLY_MATRIX_DATA.items():
-            points_per_roster[roster_id] += roster_data[i].points_scored
+            points_per_roster[roster_id].append(roster_data[i].points_scored)
 
-    for roster_id, total_points_scored in  points_per_roster.items():
-        points_per_roster[roster_id] = total_points_scored/(LATEST_FINISHED_WEEK)
-    
-    ranked_points_per_game = rank_data_keyed_by_roster_id(points_per_roster)
+    points_per_game_per_roster = {}
+    std_dev_per_game_per_roster = {}
+
+    for roster_id, points_scored_per_week in  points_per_roster.items():
+        points_per_game_per_roster[roster_id] = statistics.mean(points_scored_per_week)
+        std_dev_per_game_per_roster[roster_id] = statistics.stdev(points_scored_per_week)
+
+    ranked_points_per_game = rank_data_keyed_by_roster_id(points_per_game_per_roster, 0)
 
     print("POINTS PER GAME and RANKED POINTS PER GAME")
-    print(convert_roster_keyed_dict_to_username_mapping(points_per_roster))
+    print(convert_roster_keyed_dict_to_username_mapping(points_per_game_per_roster))
     print(convert_roster_keyed_dict_to_username_mapping(ranked_points_per_game))
 
-    return ranked_points_per_game
+    coefficient_of_variation_per_roster = {}
+    for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
+        coefficient_of_variation_per_roster[roster_id] = std_dev_per_game_per_roster[roster_id] / points_per_game_per_roster[roster_id]
+
+    ranked_consistency = rank_data_keyed_by_roster_id(coefficient_of_variation_per_roster, 1)
+
+    print("CONSISTENCY and RANKED CONSISTENCY")
+    print(convert_roster_keyed_dict_to_username_mapping(coefficient_of_variation_per_roster))
+    print(convert_roster_keyed_dict_to_username_mapping(ranked_consistency))
+
+    return ranked_points_per_game, ranked_consistency
 
 # Get ROS rankings for roster strength. This is a manual step and requires human input. ROS roster strength can be found
 # on FantasyPros    
@@ -211,7 +228,7 @@ def get_ros_rankings():
 # den = Win weight + OWV weight + RecentWinWeight + Consitency weight + ROS weight
 #
 # Note that the weights change based on current time in the season. Check the global constants to see how they are defined, and to modify them.
-def calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, ros_rankings):
+def calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, consistency_rankings, ros_rankings):
     power_rankings = {}
 
     WIN_WEIGHT_TO_USE = WIN_WEIGHT if LATEST_FINISHED_WEEK >= WIN_EARLY_SEASON_WEEK_THRESHOLD else WIN_WEIGHT_EARLY_SEASON
@@ -221,7 +238,7 @@ def calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, rece
     print("Using the following weights: \nWins: {} \nOverall Wins: {}\nRecent Wins: {}\nConsistency: {}\nPoints per Game: {}\nROS Rank: {}".format(WIN_WEIGHT_TO_USE, OVERALL_WIN_WEIGHT, RECENT_WINS_TO_USE, CONSISTENCY_TO_USE, POINTS_SCORED_WEIGHT, ROSTER_STRENGTH_WEIGHT))
         
     for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
-        num = (wins_rankings[roster_id] * WIN_WEIGHT_TO_USE) + (overall_wins_rankings[roster_id] * OVERALL_WIN_WEIGHT) + (recent_wins_rankings[roster_id] * RECENT_WINS_TO_USE) + (points_per_game_rankings[roster_id] * POINTS_SCORED_WEIGHT) + (ros_rankings[roster_id] * ROSTER_STRENGTH_WEIGHT)
+        num = (wins_rankings[roster_id] * WIN_WEIGHT_TO_USE) + (overall_wins_rankings[roster_id] * OVERALL_WIN_WEIGHT) + (recent_wins_rankings[roster_id] * RECENT_WINS_TO_USE) + (points_per_game_rankings[roster_id] * POINTS_SCORED_WEIGHT) + (consistency_rankings[roster_id] * CONSISTENCY_TO_USE) + (ros_rankings[roster_id] * ROSTER_STRENGTH_WEIGHT)
         den = WIN_WEIGHT_EARLY_SEASON + OVERALL_WIN_WEIGHT + POINTS_SCORED_WEIGHT + ROSTER_STRENGTH_WEIGHT
         power_rankings[roster_id] = round(num/den, 2)
 
@@ -240,10 +257,12 @@ def convert_roster_keyed_dict_to_username_mapping(to_convert):
 # e.g rankdata([0, 2, 3, 2], method='min')
 # array([ 1,  2,  4,  2])
 # See https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.rankdata.html
-def rank_data_keyed_by_roster_id(to_rank):
+def rank_data_keyed_by_roster_id(to_rank, to_reverse):
     rank_matrix = []
+    reverse_items = -1 if to_reverse == 0 else 1
+
     for roster_id, value in to_rank.items():
-        rank_matrix.append([roster_id, -1*value])
+        rank_matrix.append([roster_id, reverse_items*value])
     
     ranked_data = rankdata(rank_matrix, axis=0, method='min')
 
