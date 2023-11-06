@@ -7,7 +7,7 @@ import csv
 # League ID is visible in league settings or browser URL if on computer
 LEAGUE_ID = 1021898570066784256 
 # Populate this manually. This is the week that you just finished or want to represent.
-LATEST_FINISHED_WEEK = 1
+LATEST_FINISHED_WEEK = 2
 
 ### Sleeper API endpoints
 GET_LEAGUE_ENDPOINT = 'https://api.sleeper.app/v1/league/{}'
