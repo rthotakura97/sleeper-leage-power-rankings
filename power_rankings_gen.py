@@ -7,7 +7,7 @@ import csv
 # League ID is visible in league settings or browser URL if on computer
 LEAGUE_ID = 1021898570066784256 
 # Populate this manually. This is the week that you just finished or want to represent.
-LATEST_FINISHED_WEEK = 2
+LATEST_FINISHED_WEEK = 3
 
 ### Sleeper API endpoints
 GET_LEAGUE_ENDPOINT = 'https://api.sleeper.app/v1/league/{}'
@@ -108,7 +108,10 @@ def populate_per_roster_data():
     for i in range(0, LATEST_FINISHED_WEEK):
         matchups_for_week = requests.get(GET_MATCHUPS_ENDPOINT.format(LEAGUE_ID, i+1)).json()
         for roster in matchups_for_week:
-            roster_data = PerRosterWeeklyData(roster["points"], roster["matchup_id"])
+            if roster["custom_points"] is not None:
+                roster_data = PerRosterWeeklyData(roster["custom_points"], roster["matchup_id"])
+            else:
+                roster_data = PerRosterWeeklyData(roster["points"], roster["matchup_id"])
             if roster["roster_id"] in PER_TEAM_WEEKLY_MATRIX_DATA.keys():
                 PER_TEAM_WEEKLY_MATRIX_DATA[roster["roster_id"]].append(roster_data)
             else:
