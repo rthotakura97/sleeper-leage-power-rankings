@@ -6,8 +6,8 @@ import csv
 ### League Metadata
 # League ID is visible in league settings or browser URL if on computer
 LEAGUE_ID = 1021898570066784256 
-# Populate this manually. This is the week that you just finished or want to represent.
-LATEST_FINISHED_WEEK = 3
+# Last finished week. You can comment this out and set it manually if needed.
+LATEST_FINISHED_WEEK = requests.get("https://api.sleeper.app/v1/state/nba").json()["week"] - 1
 
 ### Sleeper API endpoints
 GET_LEAGUE_ENDPOINT = 'https://api.sleeper.app/v1/league/{}'
