@@ -8,6 +8,8 @@ import csv
 LEAGUE_ID = 1021898570066784256 
 # Last finished week. You can comment this out and set it manually if needed.
 LATEST_FINISHED_WEEK = requests.get("https://api.sleeper.app/v1/state/nba").json()["week"] - 1
+# Current season
+CURRENT_SEASON = requests.get("https://api.sleeper.app/v1/state/nba").json()["season"]
 
 ### Sleeper API endpoints
 GET_LEAGUE_ENDPOINT = 'https://api.sleeper.app/v1/league/{}'
@@ -87,6 +89,7 @@ def main():
     export_to_csv()
 
 # Load in data and map roster IDs to team names and set global map
+# Owner ID and User ID are the same in terms of the sleeper API
 def populate_roster_to_team_name_mapping():
     user_to_team_name = {}
     roster_to_user = {}
@@ -191,7 +194,7 @@ def calculate_points_per_game_and_consistency_rankings():
     points_per_game_per_roster = {}
     std_dev_per_game_per_roster = {}
 
-    for roster_id, points_scored_per_week in  points_per_roster.items():
+    for roster_id, points_scored_per_week in points_per_roster.items():
         points_per_game_per_roster[roster_id] = statistics.mean(points_scored_per_week)
 
         # Need multiple data points (multiple weeks) to calculate Std Dev. So lets just only calculate it
@@ -331,7 +334,12 @@ def export_to_csv():
     
     field_names = ['POWER RANK', 'Member', 'POWER RANK VALUE', 'PPG', 'PPG Rank', 'Wins', 'Win Rank', 'Overall Wins', 'Overall Win Rank', 'Recent Wins', 'Recent Wins Rank',
      'Consistency Rating', 'Consistency Rank', 'ROS Roster Rank',]
-    with open('Week-{}-Power-Rankings.csv'.format(LATEST_FINISHED_WEEK), 'w') as csvfile:
+    
+    # Write to weekly folder. The format is the following:
+    # Root folder name - > power_rankings_history
+    # Season -> starting year of the season
+    # Week -> latest played week
+    with open('power_rankings_history/{}/week_{}/Week-{}-Power-Rankings.csv'.format(CURRENT_SEASON, LATEST_FINISHED_WEEK, LATEST_FINISHED_WEEK), 'w') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames = field_names)
         writer.writeheader()
         writer.writerows(final_results)
