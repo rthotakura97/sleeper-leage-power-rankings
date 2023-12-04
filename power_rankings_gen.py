@@ -2,6 +2,7 @@ import requests
 from scipy.stats import rankdata
 import statistics
 import csv
+import argparse
 
 ### League Metadata
 # League ID is visible in league settings or browser URL if on computer
@@ -73,20 +74,34 @@ class PerRosterCalculatedData:
         pass
 
 def main():
-    # Load in all necessary data
-    populate_roster_to_team_name_mapping()
-    populate_per_roster_data()
+    # Initialize parser
+    parser = argparse.ArgumentParser()
+    
+    # Adding optional argument
+    parser.add_argument("-t", "--type", help = "Pick type: Power Rankings (pr) or True Standings (ts)")
+    
+    # Read arguments from command line
+    args = parser.parse_args()
 
-    # Gather individual calculations
-    points_per_game_rankings, consistency_rankings = calculate_points_per_game_and_consistency_rankings()
-    wins_rankings, overall_wins_rankings, recent_wins_rankings = calculate_wins_and_overall_wins_and_recent_wins_rankings()
-    ros_rankings = get_ros_rankings()
+    if (args.type == "pr"):
+        # Load in all necessary data
+        populate_roster_to_team_name_mapping()
+        populate_per_roster_data()
 
-    # Calculate and sort power rankings
-    calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, consistency_rankings, ros_rankings)
+        # Gather individual calculations
+        points_per_game_rankings, consistency_rankings = calculate_points_per_game_and_consistency_rankings()
+        wins_rankings, overall_wins_rankings, recent_wins_rankings = calculate_wins_and_overall_wins_and_recent_wins_rankings()
+        ros_rankings = get_ros_rankings()
 
-    # Export to CSV
-    export_to_csv()
+        # Calculate and sort power rankings
+        calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, consistency_rankings, ros_rankings)
+
+        # Export to CSV
+        export_to_csv()
+    elif (args.type == "ts"):
+        print ("Implementation soon...")
+    else:
+        print("Please select a valid option. Use --help to see options.")
 
 # Load in data and map roster IDs to team names and set global map
 # Owner ID and User ID are the same in terms of the sleeper API
