@@ -4,11 +4,19 @@ import statistics
 import csv
 import argparse
 
+# TODO
+# organize code better, more modular for different puproses (separate out true wins)
+# logging
+# cleaner code
+# arg parse
+
 ### League Metadata
 # League ID is visible in league settings or browser URL if on computer
 LEAGUE_ID = 1021898570066784256 
 # Last finished week. You can comment this out and set it manually if needed.
 LATEST_FINISHED_WEEK = requests.get("https://api.sleeper.app/v1/state/nba").json()["week"] - 1
+# Number of teams
+NUMBER_OF_TEAMS = int(requests.get("https://api.sleeper.app/v1/league/{}".format(LEAGUE_ID)).json()["total_rosters"])
 # Current season
 CURRENT_SEASON = requests.get("https://api.sleeper.app/v1/state/nba").json()["season"]
 
@@ -74,30 +82,29 @@ class PerRosterCalculatedData:
         pass
 
 def main():
-    # Initialize parser
     parser = argparse.ArgumentParser()
-    
-    # Adding optional argument
     parser.add_argument("-t", "--type", help = "Pick type: Power Rankings (pr) or True Standings (ts)")
-    
-    # Read arguments from command line
     args = parser.parse_args()
 
-    if (args.type == "pr"):
-        # Load in all necessary data
-        populate_roster_to_team_name_mapping()
-        populate_per_roster_data()
+    # Load in all necessary data
+    populate_roster_to_team_name_mapping()
+    populate_per_roster_data()
 
+    if (args.type == "pr"):
         # Gather individual calculations
         points_per_game_rankings, consistency_rankings = calculate_points_per_game_and_consistency_rankings()
-        wins_rankings, overall_wins_rankings, recent_wins_rankings = calculate_wins_and_overall_wins_and_recent_wins_rankings()
+        wins_rankings, overall_wins_rankings, recent_wins_rankings, true_wins = calculate_wins_and_overall_wins_and_recent_wins_and_true_wins_rankings()
         ros_rankings = get_ros_rankings()
 
         # Calculate and sort power rankings
         calculate_power_rankings_per_team(wins_rankings, overall_wins_rankings, recent_wins_rankings, points_per_game_rankings, consistency_rankings, ros_rankings)
 
-        # Export to CSV
-        export_to_csv()
+        # Export power rankings to CSV
+        export_power_rankings_to_csv()
+
+        # Export true wins analysis to CSV
+        export_true_wins_to_csv()
+
     elif (args.type == "ts"):
         print ("Implementation soon...")
     else:
@@ -145,7 +152,7 @@ def populate_per_roster_data():
 #
 # It would be useful to understand how PER_TEAM_WEEKLY_MATRIX_DATA is formatted. Check the global instantiation above.
 # Also useful to see how the sleeper matchups API works https://docs.sleeper.app/#getting-matchups-in-a-league
-def calculate_wins_and_overall_wins_and_recent_wins_rankings():
+def calculate_wins_and_overall_wins_and_recent_wins_and_true_wins_rankings():
     overall_wins = {}
     wins = {}
     recent_wins = {}
@@ -178,6 +185,14 @@ def calculate_wins_and_overall_wins_and_recent_wins_rankings():
     ranked_overall_wins = rank_data_keyed_by_roster_id(sorted_overall_wins, 0)
     ranked_recent_wins = rank_data_keyed_by_roster_id(sorted_recent_wins, 0)
 
+    # TODO extract this to other method
+    # Calculate total extrapolated win percentages for true wins
+    true_wins = {}
+    total_all_play_games_per_team = LATEST_FINISHED_WEEK * (NUMBER_OF_TEAMS-1)
+    for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
+        all_play_win_percentage = sorted_overall_wins[roster_id] / total_all_play_games_per_team
+        true_wins[roster_id] = all_play_win_percentage * LATEST_FINISHED_WEEK
+
     # Write results to global results data structure
     for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
         if roster_id not in FINAL_RESULTS.keys():
@@ -189,8 +204,9 @@ def calculate_wins_and_overall_wins_and_recent_wins_rankings():
         FINAL_RESULTS[roster_id].overall_wins_rankings = ranked_overall_wins[roster_id]
         FINAL_RESULTS[roster_id].recent_wins = sorted_recent_wins[roster_id]
         FINAL_RESULTS[roster_id].recent_wins_rankings = ranked_recent_wins[roster_id]
+        FINAL_RESULTS[roster_id].true_wins = true_wins[roster_id]
 
-    return ranked_wins, ranked_overall_wins, ranked_recent_wins
+    return ranked_wins, ranked_overall_wins, ranked_recent_wins, true_wins
 
 # Iterate through all teams and weeks to add up and calculate team based PPG
 #
@@ -319,7 +335,7 @@ def rank_data_keyed_by_roster_id(to_rank, to_reverse):
     return rebuilt_to_roster_id 
 
 # Aggregate data from FINAL_RESULTS and format/write to CSV
-def export_to_csv():
+def export_power_rankings_to_csv():
     final_results = []
     for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
         roster_results = {}
@@ -341,6 +357,8 @@ def export_to_csv():
         roster_results['Recent Wins'] = FINAL_RESULTS[roster_id].recent_wins
         roster_results['Recent Wins Rank'] = FINAL_RESULTS[roster_id].recent_wins_rankings
 
+        roster_results['True Wins'] = FINAL_RESULTS[roster_id].true_wins
+
         roster_results['Consistency Rating'] = FINAL_RESULTS[roster_id].consistency
         roster_results['Consistency Rank'] = FINAL_RESULTS[roster_id].consistency_rankings
         
@@ -348,13 +366,38 @@ def export_to_csv():
         final_results.append(roster_results)
     
     field_names = ['POWER RANK', 'Member', 'POWER RANK VALUE', 'PPG', 'PPG Rank', 'Wins', 'Win Rank', 'Overall Wins', 'Overall Win Rank', 'Recent Wins', 'Recent Wins Rank',
-     'Consistency Rating', 'Consistency Rank', 'ROS Roster Rank',]
+     'True Wins', 'Consistency Rating', 'Consistency Rank', 'ROS Roster Rank',]
     
     # Write to weekly folder. The format is the following:
     # Root folder name - > power_rankings_history
     # Season -> starting year of the season
     # Week -> latest played week
     with open('power_rankings_history/{}/week_{}/Week-{}-Power-Rankings.csv'.format(CURRENT_SEASON, LATEST_FINISHED_WEEK, LATEST_FINISHED_WEEK), 'w') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames = field_names)
+        writer.writeheader()
+        writer.writerows(final_results)
+
+# Aggregate data from FINAL_RESULTS and format/write to CSV for true wins analysis
+def export_true_wins_to_csv():
+    final_results = []
+    for roster_id in ROSTER_TO_TEAM_NAME_MAPPING.keys():
+        roster_results = {}
+
+        roster_results['Member'] = ROSTER_TO_TEAM_NAME_MAPPING[roster_id]
+        roster_results['Wins'] = FINAL_RESULTS[roster_id].wins
+        roster_results['True Wins'] = FINAL_RESULTS[roster_id].true_wins
+        roster_results['Delta'] = float(FINAL_RESULTS[roster_id].wins) - float(FINAL_RESULTS[roster_id].true_wins)
+        roster_results['Overall Wins'] = FINAL_RESULTS[roster_id].overall_wins
+        
+        final_results.append(roster_results)
+
+    field_names = ['Member', 'True Wins', 'Wins', 'Delta', 'Overall Wins']
+    
+    # Write to weekly folder. The format is the following:
+    # Root folder name - > power_rankings_history
+    # Season -> starting year of theß season
+    # Week -> latest played week
+    with open('power_rankings_history/{}/week_{}/Week-{}-True-Wins.csv'.format(CURRENT_SEASON, LATEST_FINISHED_WEEK, LATEST_FINISHED_WEEK), 'w') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames = field_names)
         writer.writeheader()
         writer.writerows(final_results)
