@@ -177,8 +177,8 @@ def calculate_wins_and_overall_wins_and_recent_wins_and_true_wins_rankings():
                         if i >= recent_week_threshold and recent_week_threshold >= 0:
                             recent_wins[roster_id] += 1 if roster_data[i].points_scored > other_roster_data[i].points_scored else 0
 
-    sorted_wins = dict(sorted(wins.items(), key=lambda item: item[1]))
     sorted_overall_wins = dict(sorted(overall_wins.items(), key=lambda item: item[1]))
+    sorted_wins = dict(sorted(wins.items(), key=lambda item: item[1]))
     sorted_recent_wins = dict(sorted(recent_wins.items(), key=lambda item: item[1]))
 
     ranked_wins = rank_data_keyed_by_roster_id(sorted_wins, 0)
