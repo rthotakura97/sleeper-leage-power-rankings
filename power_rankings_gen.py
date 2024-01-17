@@ -4,12 +4,6 @@ import statistics
 import csv
 import argparse
 
-# TODO
-# organize code better, more modular for different puproses (separate out true wins)
-# logging
-# cleaner code
-# arg parse
-
 ### League Metadata
 # League ID is visible in league settings or browser URL if on computer
 LEAGUE_ID = 1021898570066784256 
