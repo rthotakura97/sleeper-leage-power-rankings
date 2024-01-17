@@ -3,7 +3,7 @@ A script to gather power rankings for any sleeper league for any sport
 
 To run:
 ```
-python3 power_rankings_gen.py
+python3 power_rankings_gen.py --type pr
 ```
 
 Use inline comments on the script to generate power rankings.
